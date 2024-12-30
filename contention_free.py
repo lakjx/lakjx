@@ -1,7 +1,6 @@
 import numpy as np
 import copy
 from collections import deque
-import json
 class UE:
     def __init__(self, name_id, buffer_size):
         self.name_id = name_id
