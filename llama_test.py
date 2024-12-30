@@ -497,7 +497,7 @@ def arg_config():
     parser = argparse.ArgumentParser()
     parser.add_argument('--rho', type=int, default=3)
     parser.add_argument('--recent_k', type=int, default=1)
-    parser.add_argument('--UE_num', type=int, default=8)
+    parser.add_argument('--UE_num', type=int, default=2)
     parser.add_argument('--UE_txbuff_len', type=int, default=20)
     # parser.add_argument('--UE_max_generate_SDUs', type=int, default=2)
     parser.add_argument('--p_SDU_arrival', type=float, default=0.5)
