@@ -365,62 +365,6 @@ Fork Agent 被要求生成两个 XML 块：
 </summary>
 ```
 
-### 防止工具调用的强力前导词
-
-```typescript
-const NO_TOOLS_PREAMBLE = `CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.
-
-- Do NOT use Read, Bash, Grep, Glob, Edit, Write, or ANY other tool.
-- You already have all the context you need in the conversation above.
-- Tool calls will be REJECTED and will waste your only turn — you will fail the task.
-- Your entire response must be plain text: an <analysis> block followed by a <summary> block.
-`
-```
-
-为什么需要这么强力？注释解释了：
-
-```
-// Sonnet 4.6+ 自适应思考模型有时会忽略较弱的尾部指令并尝试调用工具。
-// 在 maxTurns: 1 的情况下，被拒绝的工具调用意味着没有文本输出
-// → 回退到流式备用路径（4.6 上 2.79% vs 4.5 上 0.01%）。
-// 把这个放在最前面并明确说明拒绝后果，可以防止浪费轮次。
-```
-
-### 后处理（formatCompactSummary）
-
-```typescript
-function formatCompactSummary(summary: string): string {
-  // 1. 删除 <analysis> 块（草稿，已无价值）
-  summary = summary.replace(/<analysis>[\s\S]*?<\/analysis>/, '')
-
-  // 2. 提取 <summary> 内容，替换为可读标题
-  const match = summary.match(/<summary>([\s\S]*?)<\/summary>/)
-  if (match) {
-    summary = summary.replace(/<summary>[\s\S]*?<\/summary>/,
-      `Summary:\n${match[1].trim()}`)
-  }
-
-  // 3. 清理多余空行
-  summary = summary.replace(/\n\n+/g, '\n\n')
-  return summary.trim()
-}
-```
-
-### 压缩后消息序列
-
-```
-[CompactBoundaryMessage]     ← 标记压缩边界（含 token 统计、trigger 类型）
-[SummaryUserMessage]         ← 格式化后的摘要
-[messagesToKeep]             ← 保留的最近消息（如果有）
-[Attachments]                ← 重新注入的附件
-  - 最近读取的文件（前 5 个，每个 ≤ 5K tokens，总预算 50K）
-  - Plan 文件（如果有活跃计划）
-  - MCP 指令增量
-  - 技能发现增量
-  - 代理列表增量
-[HookResults]                ← PreCompact/PostCompact 钩子结果
-```
-
 ### Prompt-Too-Long 重试机制
 
 当压缩请求本身超过上下文限制时：
@@ -461,18 +405,6 @@ function truncateHeadForPTLRetry(messages, ptlResponse): Message[] | null {
   return sliced
 }
 ```
-
-### 部分压缩（Partial Compact）
-
-支持两个方向：
-
-| 方向 | 提示词 | 用途 |
-|------|--------|------|
-| `from`（默认） | `PARTIAL_COMPACT_PROMPT` | 保留旧消息，仅摘要"最近的消息" |
-| `up_to` | `PARTIAL_COMPACT_UP_TO_PROMPT` | 摘要旧消息，保留新消息。摘要会放在开头，后续消息跟在后面 |
-
-`up_to` 模式的摘要包含一个特殊的第 9 章节 "Context for Continuing Work"，专门为后续消息提供上下文。
-
 ---
 
 ## 5. 第4层：Session Memory 压缩
