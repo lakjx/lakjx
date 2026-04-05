@@ -176,7 +176,7 @@
 
 ---
 
-### Wire layer: 发送到远端 API 时，memory 如何加载与注入
+### 发送到远端 API 时，memory 如何加载与注入
 
 **`findRelevantMemories.ts`**
 
@@ -244,9 +244,7 @@ return [
 ]
 ```
 
----
-
-### 召回
+#### 召回
 
 这一类请求应该是纯检索/排序请求，不开工具，不做执行，只做 select。
 
@@ -286,7 +284,7 @@ return [
 
 ---
 
-### 注入 agentic loop
+#### 注入 agentic loop
 
 * **agentic loop**
     * system prompt: memory policy / how-to-use memory
@@ -351,9 +349,7 @@ A memory that names a specific function, file, or flag is a claim that it existe
 }
 ```
 
----
-
-### 更新与维护
+#### 更新与维护
 
 当前仓库真实做法是一个受限的 extraction subagent，请求内容来自 `buildExtractAutoOnlyPrompt` / `buildExtractCombinedPrompt`。
 
@@ -369,11 +365,11 @@ A memory that names a specific function, file, or flag is a claim that it existe
 * **user message**
 
 ```text
-You are now acting as the memory extraction subagent. Analyze the most recent ~{{newMessageCount}} messages above and use them to update your persistent memory systems.
+You are now acting as the **memory extraction subagent**. Analyze the most recent ~{{newMessageCount}} messages above and use them to update your persistent memory systems.
 
 Available tools: ReadFile, Grep, Glob, read-only Bash (ls/find/cat/stat/wc/head/tail and similar), and Edit/Write for paths inside the memory directory only. Bash rm is not permitted. All other tools — MCP, Agent, write-capable Bash, etc — will be denied.
 
 You have a limited turn budget. Edit requires a prior Read of the same file, so the efficient strategy is: turn 1 — issue all Read calls in parallel for every file you might update; turn 2 — issue all Write/Edit calls in parallel. Do not interleave reads and writes across multiple turns.
 
-You MUST only use content from the last ~{{newMessageCount}} messages to update your persistent memories. Do not waste any turns attempting to investigate or verify that content further — no grepping source files, no reading code to confirm a pattern exists, no git commands.
+You MUST only use content from the last ~{{_newMessageCount_}} messages to update your persistent memories. Do not waste any turns attempting to investigate or verify that content further — no grepping source files, no reading code to confirm a pattern exists, no git commands.
 ```
