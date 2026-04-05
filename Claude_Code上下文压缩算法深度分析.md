@@ -1,6 +1,5 @@
 # Claude Code 上下文压缩算法深度分析
 
-> 基于 Claude Code 源码（2026-03-31 快照，512K 行 TypeScript）逆向分析
 > 核心文件：`src/services/compact/` 目录下 11 个文件
 
 ---
@@ -865,7 +864,3 @@ API 调用失败
 5. **可配置性**：几乎所有阈值都支持环境变量覆盖（用于测试）或 GrowthBook 远程配置（用于动态调整）
 
 ---
-
-*来自：AI超元域 | B站频道：https://space.bilibili.com/3493277319825652*
-
-*基于 Claude Code 源码逆向分析，2026-03-31*
