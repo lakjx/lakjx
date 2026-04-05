@@ -8,7 +8,7 @@
 * llm-based
   * rule (memory 的幻觉)
 ---
-## 示例--Case
+### 示例--Case
 * manifest (声明式 (declarative) 元数据文件，声明清单):
   * 它是对 memory 目录中已有记忆文件的“轻量目录摘要”，不是全文内容，也不是索引文件 MEMORY.md 本身。
   * 它由 `src/memdir/memoryScan.ts` 生成。代码先递归扫描 memory 目录 (`~/.claude/projects/<仓库标识>/memory/`) 下除 MEMORY.md 之外的 .md 文件 (每个文件承载一条或一组同主题的持久记忆。)，只读取前面的 frontmatter 和文件时间，抽出这几个字段。
@@ -84,8 +84,7 @@
 
 ---
 
-### 如果把四类 memory 压缩成四个问题：
-
+如果把四类 memory 压缩成四个问题：
 * **user**: 这个用户是谁？
     * 存“用户画像”
     * 不存“项目状态”
@@ -96,7 +95,7 @@
 
 ---
 
-### Taxonomy System Prompts (XML Definitions)
+**Taxonomy System Prompts**
 
 ```xml
 <type>
@@ -105,7 +104,9 @@
   <when_to_save>When you learn any details about the user's role, preferences, responsibilities, or knowledge</when_to_save>
   <how_to_use>When your work should be informed by the user's profile or perspective...</how_to_use>
 </type>
-
+```
+> 存用户画像、不存项目状态、不存代码事实
+```xml
 <type>
   <name>feedback</name>
   <description>Guidance the user has given you about how to approach work — both what to avoid and what to keep doing...</description>
@@ -114,7 +115,8 @@
   <body_structure>Lead with the rule itself, then a **Why:** line ... and a **How to apply:** line ...</body_structure>
   <examples></examples>
 </type>
-
+```
+```xml
 <type>
   <name>project</name>
   <description>Information that you learn about ongoing work, goals, initiatives, bugs, or incidents within the project that is not otherwise derivable from the code or git history...</description>
@@ -132,7 +134,6 @@
   <examples></examples>
 </type>
 ```
-
 ---
 
 #### 按运行期用途分类
