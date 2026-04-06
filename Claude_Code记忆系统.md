@@ -1,4 +1,19 @@
-> 前言：Memory (of coding project) 的存在，使得对用户和项目的定制化和了解程度越来越高
+> Memory的存在，使得对用户和项目的定制化和了解程度越来越高。_记忆架构_——
+```
+┌─────────────────────────────────────────────────────────────┐
+│  第3层：团队记忆（Team Memory）                               │
+│  跨用户、按仓库   │ 服务端同步 │ REST API + 乐观锁           │
+│  秘密扫描保护     │ 文件监听器 │ 30种凭证检测规则             │
+├─────────────────────────────────────────────────────────────┤
+│  第2层：持久记忆（Persistent Memory / extractMemories）       │
+│  跨会话、按项目   │ 本地文件   │ 后台 Fork Agent 自动提取     │
+│  4种类型分类      │ MEMORY.md 索引 │ AI 相关性召回            │
+├─────────────────────────────────────────────────────────────┤
+│  第1层：会话记忆（Session Memory）                             │
+│  仅当前会话      │ 单个文件   │ 10个固定章节 │ 服务于压缩     │
+└─────────────────────────────────────────────────────────────┘
+```
+> 核心文件：`src/memdir/`（8个文件）、`src/services/extractMemories/`（2个）、`src/services/SessionMemory/`（3个）、`src/services/teamMemorySync/`（5个）
 * memory 的分类（写入）
   * 内容语义分类 (**AutoMemory**)：user / feedback / project / references
 * 落盘 (本地和持久化)、更新和维护（写入）
@@ -8,11 +23,11 @@
 * llm-based
   * rule (memory 的幻觉)
 ---
-### 示例--Case
+### Case
 * manifest (声明式 (declarative) 元数据文件，声明清单):
   * 它是对 memory 目录中已有记忆文件的“轻量目录摘要”，不是全文内容，也不是索引文件 MEMORY.md 本身。
   * 它由 `src/memdir/memoryScan.ts` 生成。代码先递归扫描 memory 目录 (`~/.claude/projects/<仓库标识>/memory/`) 下除 MEMORY.md 之外的 .md 文件 (每个文件承载一条或一组同主题的持久记忆。)，只读取前面的 frontmatter 和文件时间，抽出这几个字段。
-* AutoMemory files:
+* AutoMemory files (**持续记忆系统**):
   * memory topic files，每个文件承载一条或一组同主题的持久记忆。按语义主题命名 (topic-oriented naming。)，不按时间命名，先更新已有文件，不要重复创建 (prompt-based, extract memories agent)。
   * 典型命名：
     * user_role.md
@@ -23,17 +38,47 @@
     * name
     * description
     * type
+```yaml
+---
+name: 用户偏好-简洁回复
+description: 用户不希望在每次回复末尾加总结
+type: feedback
+---
+
+不要在回复末尾总结刚做了什么，用户能看到 diff。
+
+**Why:** 用户明确要求过"stop summarizing what you just did"
+**How to apply:** 所有回复结束时，直接结束，不加回顾性总结。
+```
+
 * MEMORY.md
-  * -[User role]_user_role.md_ - User is a data scientist focused on observability
-  * -[Testing policy]_feedback_testing.md_ - Integration tests must hit a real database
-  * -[Release freeze]_project_release_freeze.md_ - Non-critical merges freeze before mobile release cut
+> MEMORY.md 是索引，不是记忆本身。纯 Markdown，无 frontmatter。每条一行，约 150 字符以内：
+```text
+- [用户偏好-简洁回复](feedback_concise.md) — 不在回复末尾加总结
+- [项目-合并冻结](project_freeze.md) — 3月5日起移动端发布冻结
+```
+* **两步保存流程**：
+1. 写入记忆文件（如 feedback_concise.md）
+2. 在 MEMORY.md 中添加索引行
+* **存储目录结构**：
 ```Plaintext
-~/.claude/projects/<sanitized-project-root>/memory/
-├── MEMORY.md
-├── user_role.md
-├── feedback_testing.md
-├── project_release_freeze.md
-└── reference_linear_board.md
+~/.claude/
+  projects/
+    -<myproject>/   ← sanitizePath(项目根目录)
+      memory/                               ← AUTO_MEM_DIRNAME
+        MEMORY.md                           ← 索引文件
+        user_role.md                        ← 私有记忆文件
+        feedback_testing.md
+        project_deadline.md
+        reference_linear.md
+        team/                               ← 团队记忆子目录
+          MEMORY.md                         ← 团队索引
+          project_api_migration.md
+          reference_oncall_board.md
+        logs/                               ← KAIROS 每日日志
+          2026/
+            03/
+              2026-03-31.md
 ```
 ---
 
@@ -81,7 +126,16 @@
         * 某个 Linear project 是什么
         * 哪个 Grafana dashboard 看什么
         * 哪个 Slack channel 存什么信息
-
+* 每种类型要求的结构
+    * feedback 和 project 类型必须包含 **Why:** 和 **How to apply:** 行
+    * 相对日期必须转换为绝对日期
+    * 硬编码了 6 类排除项（即使用户明确要求也不保存）——
+      1. 代码模式、架构、文件路径、项目结构——可从代码推导
+      2. Git 历史、最近变更——git log/git blame 是权威来源
+      3. 调试方案或修复步骤——修复在代码中，commit message 有上下文
+      4. CLAUDE.md 中已有的内容——不重复
+      5. 临时任务细节：进行中的工作、当前对话上下文
+      6. 如果用户要求保存 PR 列表或活动摘要，要追问"什么是令人意外的或不明显的？"——只保存那部分
 ---
 
 如果把四类 memory 压缩成四个问题：
@@ -166,20 +220,49 @@
     * **入口文件**: `MEMORY.md`
         * `MEMORY.md` 是索引，不是正文；正文在一个个 topic `.md` 文件里。扫描时也会显式跳过 `MEMORY.md`，只扫 topic 文件 frontmatter。
     * **TeamMem**: `AutoMem/team/`
-* **自动写入主要由 `extractMemories.ts` 触发**。它不是主模型直接写，而是 turn 结束后 fork 一个 agent 去做总结提取:
-    * 它先扫描已有记忆，给 extraction agent 一个 manifest
-    * 然后 fork agent 自己决定“更新旧文件还是写新文件”
-    * 通过 `createAutoMemCanUseTool()` 严格限制权限:
-        * 可读: Read/Grep/Glob/只读 Bash
-        * 可写: 仅限 memory 目录内 Edit/Write
+#### 自动记忆提取（extractMemories）
+```
+用户输入 → 模型响应 → 工具执行 → 循环... → 模型最终响应（无工具调用）
+                                                    ↓
+                                              Stop Hooks 执行
+                                                    ↓
+                                        executeExtractMemories()  ← 即发即忘
+```
+* **自动写入主要由 `extractMemories.ts` 触发**，它不是主模型直接写，而是 **turn** 结束后 fork 一个 agent 去做总结提取。触发时机如上——
+  * 它先扫描已有记忆，给 extraction agent 一个 manifest
+  * 然后 fork agent 自己决定“更新旧文件还是写新文件”
+  * 通过 `createAutoMemCanUseTool()` 严格限制权限:
+      * 可读: Read/Grep/Glob/只读 Bash
+      * 可写: 仅限 memory 目录内 Edit/Write
+  * 成功提取后，将写入的文件路径列表作为 `SystemMemorySavedMessage` 追加到主对话中，这样主代理知道记忆已更新。
 * 如果开启 KAIROS，新记忆不直接维护 `MEMORY.md`，而是写入按日期分层的 daily log；夜间再由 `/dream` 类流程归并成 topic files + `MEMORY.md`。这是另一种“先 append-only，再 consolidate”的维护模式。
+#### AI 驱动的记忆召回（findRelevantMemories）
+1. **召回流程**
+```
+用户发送消息
+  ↓
+scanMemoryFiles(memoryDir)
+  ↓ 递归读取所有 .md 文件（排除 MEMORY.md）
+  ↓ 解析前 30 行 frontmatter（description + type）
+  ↓ 按 mtime 降序排序，上限 200 个文件
+  ↓
+过滤掉 alreadySurfaced（之前轮次已展示的路径）
+  ↓
+selectRelevantMemories(query, memories, signal, recentTools)
+  ↓ 构建文本清单：每行 "- [type] filename (timestamp): description"
+  ↓ 附加 "Recently used tools: ..." 部分
+  ↓
+sideQuery → Sonnet 模型
+  ↓ 系统提示：SELECT_MEMORIES_SYSTEM_PROMPT
+  ↓ 用户消息：Query + Available memories
+  ↓ 结构化输出：{ selected_memories: string[] }
+  ↓ max_tokens: 256
+  ↓
+返回最多 5 条 RelevantMemory（路径 + mtime）
+```
 
----
-
-### 发送到远端 API 时，memory 如何加载与注入
-
-**`findRelevantMemories.ts`**
-
+2. **选择提示词的关键规则** 
+> `findRelevantMemories.ts`
 ```typescript
 const SELECT_MEMORIES_SYSTEM_PROMPT = `You are selecting memories that will be useful to Claude Code as it processes a user's query. You will be given the user's query and a list of available memory files with their filenames and descriptions.
 
@@ -188,14 +271,13 @@ Return a list of filenames for the memories that will clearly be useful to Claud
 - If there are no memories in the list that would clearly be useful, feel free to return an empty list.
 - If a list of recently-used tools is provided, do not select memories that are usage reference or API documentation for those tools ...`
 ```
-
-* 因为当前对话里如果已经在使用某个工具，模型通常已经“处于该工具的工作上下文里”了：
-    * 工具 schema 已经在请求里
-    * 最近 tool call / tool result 也在上下文里
-    * 当前任务本身就在驱动它使用该工具
-
-**`memoryTypes.ts`**
-
+- 返回最多 5 个文件名
+- 要有选择性和辨别力；如果不确定，不要包含
+- 如果提供了最近使用的工具列表：
+  - 不要选择这些工具的使用参考/API 文档（已经在用了）
+  - 仍然选择这些工具的警告/陷阱/已知问题
+ 
+> `memoryTypes.ts`
 ```typescript
 export const WHEN_TO_ACCESS_SECTION: readonly string[] = [
   '## When to access memories',
@@ -217,21 +299,55 @@ export const TRUSTING_RECALL_SECTION: readonly string[] = [
   '"The memory says X exists" is not the same as "X exists now."',
 ]
 ```
+  * memory 里提到某个具体符号时，它只能被当作“历史线索”，不能被当作“当前事实”。
+      * 也就是说，memory 说：有一个文件 `foo/bar.ts`、有一个函数 `getUserProfile()`、有一个 flag `ENABLE_X`，并不等于它们现在还存在。
+  * 因为 memory 记录的是“写下这条记忆时的认知”，而代码库是持续变化的（memory 幻觉）。这个函数/文件/flag 可能后来：
+      * 被重命名了
+      * 被删除了
+      * 从来没真正合并进当前分支
+      * 只存在于过去某个分支或某次讨论里
+  * 所以这段 prompt 是在明确要求模型：
+      * memory 不是 source of truth
+      * memory 是候选线索
+      * 真正要给用户建议之前，必须回到当前代码/当前仓库状态去验证
 
-* memory 里提到某个具体符号时，它只能被当作“历史线索”，不能被当作“当前事实”。
-    * 也就是说，memory 说：有一个文件 `foo/bar.ts`、有一个函数 `getUserProfile()`、有一个 flag `ENABLE_X`，并不等于它们现在还存在。
-* 因为 memory 记录的是“写下这条记忆时的认知”，而代码库是持续变化的（memory 幻觉）。这个函数/文件/flag 可能后来：
-    * 被重命名了
-    * 被删除了
-    * 从来没真正合并进当前分支
-    * 只存在于过去某个分支或某次讨论里
-* 所以这段 prompt 是在明确要求模型：
-    * memory 不是 source of truth
-    * memory 是候选线索
-    * 真正要给用户建议之前，必须回到当前代码/当前仓库状态去验证
+3. **召回前的验证要求**
+```text
+// system prompt
+You have a persistent, file-based memory system with two directories: a private directory at `/Users/me/.claude/projects/my-repo/memory/` and a shared team directory at `/Users/me/.claude/projects/my-repo/memory/team/`. Both directories already exist — write to them directly with the Write tool (do not run mkdir or check for their existence).
 
-**`prompts.ts`**
+You should build up this memory system over time so that future conversations can have a complete picture of who the user is...
 
+## When to access memories
+- When memories (personal or team) seem relevant, or the user references prior work...
+- You MUST access memory when the user explicitly asks you to check, recall, or remember.
+- If the user says to ignore or not use memory: proceed as if MEMORY.md were empty...
+
+## Before recommending from memory
+A memory that names a specific function, file, or flag is a claim that it existed when the memory was written. It may have been renamed, removed, or never merged. Before recommending it:
+- If the memory names a file path: check the file exists.
+- If the memory names a function or flag: grep for it.
+- If the user is about to act on your recommendation, verify first.
+```
+- 如果记忆提到一个文件路径 → 检查文件是否存在
+- 如果记忆提到一个函数或标志 → grep 搜索它
+- 如果用户即将根据你的建议行动 → 先验证
+- "记忆说 X 存在"不等于"X 现在存在"
+- 活动日志、架构快照是冻结在某个时间点的，优先使用 git log
+
+
+4. **更新记忆和维护**
+当前仓库真实做法是一个受限的 extraction subagent，请求内容来自 `buildExtractAutoOnlyPrompt` / `buildExtractCombinedPrompt`。
+* **调用时机**
+    * 每次 turn 结束；
+* **system**: 继承父会话的 systemPrompt
+    * 语言偏好
+    * 工具使用原则
+    * 安全规则
+    * memory 的基础政策
+    * CLAUDE.md 注入后的上下文
+    * ...
+* **user message**
 ```typescript
 return [
   `You are now acting as the memory extraction subagent. Analyze the most recent ~${newMessageCount} messages above and use them to update your persistent memory systems.`,
@@ -243,10 +359,7 @@ return [
   `You MUST only use content from the last ~${newMessageCount} messages to update your persistent memories. Do not waste any turns attempting to investigate or verify that content further ...`
 ]
 ```
-
-#### 召回
-
-这一类请求应该是纯检索/排序请求，不开工具，不做执行，只做 select。
+**完整返回**
 
 ```json
 {
@@ -282,9 +395,8 @@ return [
 }
 ```
 
----
 
-#### 注入 agentic loop
+5. **注入 agentic loop**
 
 * **agentic loop**
     * system prompt: memory policy / how-to-use memory
@@ -298,27 +410,6 @@ return [
 * **claudeMd & currentDate**
     * 会被包装成一条 `<system-reminder>` 风格的 meta user message，放在所有对话前面。
 
-#### System Prompt & Payload 示例
-
-```text
-// system
-# Memory
-
-You have a persistent, file-based memory system with two directories: a private directory at `/Users/me/.claude/projects/my-repo/memory/` and a shared team directory at `/Users/me/.claude/projects/my-repo/memory/team/`. Both directories already exist — write to them directly with the Write tool (do not run mkdir or check for their existence).
-
-You should build up this memory system over time so that future conversations can have a complete picture of who the user is...
-
-## When to access memories
-- When memories (personal or team) seem relevant, or the user references prior work...
-- You MUST access memory when the user explicitly asks you to check, recall, or remember.
-- If the user says to ignore or not use memory: proceed as if MEMORY.md were empty...
-
-## Before recommending from memory
-A memory that names a specific function, file, or flag is a claim that it existed when the memory was written. It may have been renamed, removed, or never merged. Before recommending it:
-- If the memory names a file path: check the file exists.
-- If the memory names a function or flag: grep for it.
-- If the user is about to act on your recommendation, verify first.
-```
 
 **运行期注入结构示例：**
 
@@ -348,28 +439,70 @@ A memory that names a specific function, file, or flag is a claim that it existe
   "tools": ["ReadFile", "EditFile", "Shell", "Glob", "Grep"]
 }
 ```
+### 会话记忆（Session Memory）
+#### 与持久记忆的关键区别
+| 维度 | 会话记忆 | 持久记忆 |
+| :--- | :--- | :--- |
+| 生命周期 | 当前会话 | 跨会话永久 |
+| 文件数量 | 1个 | 多个 |
+| 触发频率 | 每次后采样（需满足阈值） | 每轮查询结束 |
+| 主要用途 | 服务于上下文压缩 | 跨会话知识保留 |
+| 记忆提取者 | Fork Agent（仅 FileEdit） | Fork Agent（Read/Write/Edit/Grep） |
+| 格式 | 10个固定章节 | 自由格式 + frontmatter |
+#### 触发阈值
+```typescript
+// 默认配置（可通过 GrowthBook tengu_sm_config 远程调整）
+const defaults = {
+  minimumMessageTokensToInit: 10_000,   // 上下文达到 10K tokens 才激活
+  minimumTokensBetweenUpdate: 5_000,    // 每增长 5K tokens 更新一次
+  toolCallsBetweenUpdates: 3,           // 且至少 3 次工具调用
+}
 
-#### 更新与维护
-
-当前仓库真实做法是一个受限的 extraction subagent，请求内容来自 `buildExtractAutoOnlyPrompt` / `buildExtractCombinedPrompt`。
-
-* **调用时机**
-    * 每次 turn 结束；
-* **system**: 继承父会话的 systemPrompt
-    * 语言偏好
-    * 工具使用原则
-    * 安全规则
-    * memory 的基础政策
-    * CLAUDE.md 注入后的上下文
-    * ...
-* **user message**
-
-```text
-You are now acting as the **memory extraction subagent**. Analyze the most recent ~{{newMessageCount}} messages above and use them to update your persistent memory systems.
-
-Available tools: ReadFile, Grep, Glob, read-only Bash (ls/find/cat/stat/wc/head/tail and similar), and Edit/Write for paths inside the memory directory only. Bash rm is not permitted. All other tools — MCP, Agent, write-capable Bash, etc — will be denied.
-
-You have a limited turn budget. Edit requires a prior Read of the same file, so the efficient strategy is: turn 1 — issue all Read calls in parallel for every file you might update; turn 2 — issue all Write/Edit calls in parallel. Do not interleave reads and writes across multiple turns.
-
-You MUST only use content from the last ~{{_newMessageCount_}} messages to update your persistent memories. Do not waste any turns attempting to investigate or verify that content further — no grepping source files, no reading code to confirm a pattern exists, no git commands.
+// 触发条件：
+// (token 阈值满足 AND 工具调用阈值满足)
+// OR (token 阈值满足 AND 最后一轮助手消息无工具调用)
 ```
+#### 会话记忆模板（10 个固定章节）
+```typescript
+# Session Memory
+
+## Session Title
+_Brief description of what this session is about_
+
+## Current State
+_What is the current status of the work_
+
+## Task specification
+_Detailed description of the current task requirements_
+
+## Files and Functions
+_Key files and functions being worked on_
+
+## Workflow
+_Steps being followed or processes in use_
+
+## Errors & Corrections
+_Errors encountered and how they were resolved_
+
+## Codebase and System Documentation
+_Important codebase patterns, conventions, and system behavior_
+
+## Learnings
+_Insights gained during this session_
+
+## Key results
+_Important outputs, measurements, or achievements_
+
+## Worklog
+_Chronological log of actions taken_
+```
+**大小限制**
+```typescript
+const MAX_SECTION_LENGTH = 2_000      // 每个章节最大 2K tokens
+const MAX_TOTAL_SESSION_MEMORY_TOKENS = 12_000  // 整个文件最大 12K tokens
+```
+#### 与压缩的集成
+Session Memory 是上下文压缩的优先路径（参见 `sessionMemoryCompact.ts`）：
+- 自动压缩触发时，优先尝试用 Session Memory 作为摘要
+- 保留最近 10K-40K tokens 的消息
+- 比传统压缩快得多（不调用 LLM），且摘要质量更可预测
